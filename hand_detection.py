@@ -2,10 +2,79 @@ import math
 import cv2
 import mediapipe as mp
 import pyautogui
-from time import sleep
-# Função para calcular a distância 2D entre dois pontos
-def calcular_distancia(p1, p2):
-    return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+import time
+import webbrowser  # Para abrir URLs de forma portátil
+
+# Classe para calcular distâncias
+class CalculadoraDistancia:
+    @staticmethod
+    def calcular_2d(ponto1, ponto2):
+        return math.sqrt((ponto2[0] - ponto1[0])**2 + (ponto2[1] - ponto1[1])**2)  # Sem arredondamento
+
+# Classe para representar um dedo
+class Dedo:
+    def __init__(self, nome, ponta, dobradiça, articulacao, metacarpo):
+        self.nome = nome
+        self.ponta = ponta
+        self.dobradiça = dobradiça
+        self.articulacao = articulacao
+        self.metacarpo = metacarpo
+        
+    def distancia_para(self, outro_ponto, ponto_referido="ponta"):
+        pontos = {
+            "ponta": (self.ponta.x, self.ponta.y),
+            "dobradiça": (self.dobradiça.x, self.dobradiça.y),
+            "metacarpo": (self.metacarpo.x, self.metacarpo.y),
+            "articulacao": (self.articulacao.x, self.articulacao.y)
+        }
+        if ponto_referido not in pontos:
+            raise ValueError(f"Ponto referido '{ponto_referido}' não é válido. Use 'ponta', 'dobradiça', 'articulacao' ou 'metacarpo'.")
+
+        ponto_atual = pontos[ponto_referido]
+        return CalculadoraDistancia.calcular_2d(ponto_atual, outro_ponto)
+
+# Classe para representar uma mão com seus dedos
+class Mao:
+    def __init__(self, hand_landmarks):
+        self.polegar = Dedo(
+            "Polegar",
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.THUMB_TIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.THUMB_IP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.THUMB_MCP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.THUMB_CMC]
+        )
+        self.indicador = Dedo(
+            "Indicador",
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_DIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_PIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_MCP]
+        )
+        self.medio = Dedo(
+            "Médio",
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.MIDDLE_FINGER_TIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.MIDDLE_FINGER_DIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.MIDDLE_FINGER_PIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.MIDDLE_FINGER_MCP]
+        )
+        self.anelar = Dedo(
+            "Anelar",
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.RING_FINGER_TIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.RING_FINGER_DIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.RING_FINGER_PIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.RING_FINGER_MCP]
+        )
+        self.mindinho = Dedo(
+            "Mindinho",
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.PINKY_TIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.PINKY_DIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.PINKY_PIP],
+            hand_landmarks.landmark[mp.solutions.hands.HandLandmark.PINKY_MCP]
+        )
+
+# Função para abrir URLs
+def abrir_site(url):
+    webbrowser.open(url)
 
 # Configurações do MediaPipe
 mp_drawing = mp.solutions.drawing_utils
@@ -16,9 +85,9 @@ cap = cv2.VideoCapture(1)
 
 with mp_hands.Hands(
     model_complexity=0,
-    min_detection_confidence=0.75,
-    min_tracking_confidence=0.75) as hands:
-
+    min_detection_confidence=0.8,
+    min_tracking_confidence=0.8) as hands:
+    
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -42,37 +111,31 @@ with mp_hands.Hands(
                     mp_drawing_styles.get_default_hand_landmarks_style(),
                     mp_drawing_styles.get_default_hand_connections_style())
 
-                # Obtenção das coordenadas normalizadas (x, y) da ponta dos dedos e polegar
-                h, w, _ = image.shape
-                polegar = (hand_landmarks.landmark[mp.solutions.hands.HandLandmark.THUMB_TIP].x * w,
-                           hand_landmarks.landmark[mp.solutions.hands.HandLandmark.THUMB_TIP].y * h)
-                indicador = (hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP].x * w,
-                             hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP].y * h)
-                medio = (hand_landmarks.landmark[mp.solutions.hands.HandLandmark.MIDDLE_FINGER_TIP].x * w,
-                         hand_landmarks.landmark[mp.solutions.hands.HandLandmark.MIDDLE_FINGER_TIP].y * h)
-                anelar = (hand_landmarks.landmark[mp.solutions.hands.HandLandmark.RING_FINGER_TIP].x * w,
-                          hand_landmarks.landmark[mp.solutions.hands.HandLandmark.RING_FINGER_TIP].y * h)
+                # Cria uma instância da mão com os dedos
+                mao = Mao(hand_landmarks)
 
-                # Calcula as distâncias entre polegar e outros dedos
-                dist_indicador = calcular_distancia(polegar, indicador)
-                dist_medio = calcular_distancia(polegar, medio)
-                dist_anelar = calcular_distancia(polegar, anelar)
+                # Obtém as coordenadas das pontas do indicador e do polegar
+                ponta_indicador = (mao.indicador.ponta.x, mao.indicador.ponta.y)
+                ponta_polegar = (mao.polegar.ponta.x, mao.polegar.ponta.y)
+                ponta_medio = (mao.medio.ponta.x, mao.medio.ponta.y)
+                ponta_anelar = (mao.anelar.ponta.x, mao.anelar.ponta.y)
 
-                # Imprime as distâncias
-                print(f"Distância Polegar-Indicador: {dist_indicador:.2f}")
-                print(f"Distância Polegar-Médio: {dist_medio:.2f}")
-                print(f"Distância Polegar-Anelar: {dist_anelar:.2f}")
+                # Calcula a distância entre os dedos
+                dist_polegar_indicador = CalculadoraDistancia.calcular_2d(ponta_indicador, ponta_polegar)
+                dist_polegar_medio = CalculadoraDistancia.calcular_2d(ponta_medio, ponta_polegar)
+                dist_polegar_anelar = CalculadoraDistancia.calcular_2d(ponta_anelar, ponta_polegar)
 
-                # Controle do mouse
-                if dist_indicador < 30:
-                    pyautogui.move(0, -20)
-                    sleep(1)
-                if dist_medio < 20:
-                    pyautogui.press("Win")
-                    sleep(1)
-                if dist_anelar < 20:
-                    pyautogui.click()  # Clique esquerdo
-                    sleep(1)
+                # Define uma distância mínima para os gestos
+                distancia_minima = 0.02  # Valor lógico para teste
+
+                # Automação com PyAutoGUI
+                if dist_polegar_indicador < distancia_minima:
+                    print(f"Movimento de pinça: {dist_polegar_indicador}")
+                    abrir_site("https://trello.com")
+
+                if dist_polegar_medio < distancia_minima:
+                    print(f"Movimento polegar-médio: {dist_polegar_medio}")
+                    abrir_site("https://google.com")
 
         cv2.imshow('MediaPipe Hands', image)
 
